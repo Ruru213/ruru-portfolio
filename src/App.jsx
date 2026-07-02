@@ -1,4 +1,31 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+
+// ── Firebase ──────────────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyDlvO89p8rD4olaj1XZ-9pJiOfEb_6DRpg",
+  authDomain: "ruru-portfolio.firebaseapp.com",
+  projectId: "ruru-portfolio",
+  storageBucket: "ruru-portfolio.firebasestorage.app",
+  messagingSenderId: "147362244031",
+  appId: "1:147362244031:web:4a731a1566b3dacc74ad0a"
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+
+async function loadFromFirestore(key, fallback) {
+  try {
+    const snap = await getDoc(doc(db, "portfolio", key));
+    return snap.exists() ? snap.data().value : fallback;
+  } catch { return fallback; }
+}
+
+async function saveToFirestore(key, value) {
+  try {
+    await setDoc(doc(db, "portfolio", key), { value });
+  } catch(e) { console.warn("Firestore save failed", e); }
+}
 
 // ── Design Tokens ─────────────────────────────────────────────────────
 const C = {
@@ -93,7 +120,7 @@ function useStyles(editMode) {
       html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;}
       body{background:${C.bg};color:${C.ink};overflow-x:hidden;}
       ::-webkit-scrollbar{width:2px;}::-webkit-scrollbar-thumb{background:${C.inkFaint};}
-      .reveal{opacity:0;transform:translateY(32px);transition:opacity .65s cubic-bezier(.22,1,.36,1),transform .65s cubic-bezier(.22,1,.36,1);}
+      .reveal{opacity:1;transform:translateY(0);}
       .reveal.in{opacity:1;transform:translateY(0);}
       .nav-btn{background:none;border:none;cursor:pointer;font-family:'Noto Sans TC',sans-serif;font-size:12px;font-weight:300;letter-spacing:.16em;color:${C.inkLight};border-bottom:1px solid transparent;padding-bottom:2px;transition:color .2s,border-color .2s;}
       .nav-btn.on{color:${C.ink};border-bottom-color:${C.brick};}
@@ -129,16 +156,7 @@ function useStyles(editMode) {
   },[]);
 }
 
-function useReveal() {
-  useEffect(()=>{
-    const t=setTimeout(()=>{
-      const obs=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add("in");obs.unobserve(e.target);}}),{threshold:.08});
-      document.querySelectorAll(".reveal").forEach(el=>obs.observe(el));
-      return()=>obs.disconnect();
-    },80);
-    return()=>clearTimeout(t);
-  },[]);
-}
+function useReveal(loading) { /* disabled */ }
 
 // ── Editable field component ──────────────────────────────────────────
 function EF({ value, onChange, editMode, tag="span", rows, style={}, className="" }) {
@@ -524,15 +542,13 @@ function Videos({ editMode }) {
   const px = isMobile ? "20px" : "48px", py = isMobile ? "72px" : "112px";
   const fileRef = useRef(null);
 
-  const [videos, setVideos] = useState(() => {
-    try { const s = localStorage.getItem(VIDEO_KEY); return s ? JSON.parse(s) : DEFAULT_VIDEOS; }
-    catch { return DEFAULT_VIDEOS; }
-  });
+  const [videos, setVideos] = useState(DEFAULT_VIDEOS);
   const [adding, setAdding] = useState(false);
   const [playing, setPlaying] = useState(null);
   const [newV, setNewV] = useState({ type:"reel", title:"", desc:"", tag:"", url:"", videoSrc:"" });
 
-  useEffect(() => { try { localStorage.setItem(VIDEO_KEY, JSON.stringify(videos)); } catch {} }, [videos]);
+  useEffect(()=>{ loadFromFirestore("videos", DEFAULT_VIDEOS).then(setVideos); },[]);
+  useEffect(()=>{ if(videos!==DEFAULT_VIDEOS) saveToFirestore("videos", videos); },[videos]);
 
   const addVideo = () => {
     if (!newV.title.trim()) return;
@@ -668,11 +684,12 @@ function Videos({ editMode }) {
 function Journal({ editMode }) {
   const {isMobile}=useBreakpoint();
   const px=isMobile?"20px":"48px", py=isMobile?"72px":"112px";
-  const [posts,setPosts]=useState(()=>{try{const s=localStorage.getItem(JOURNAL_KEY);return s?JSON.parse(s):DEFAULT_POSTS;}catch{return DEFAULT_POSTS;}});
+  const [posts,setPosts]=useState(DEFAULT_POSTS);
   const [adding,setAdding]=useState(false);
   const [expanded,setExpanded]=useState(null);
   const [newPost,setNewPost]=useState({tag:"",title:"",body:""});
-  useEffect(()=>{try{localStorage.setItem(JOURNAL_KEY,JSON.stringify(posts));}catch{}},[posts]);
+  useEffect(()=>{ loadFromFirestore("journal", DEFAULT_POSTS).then(setPosts); },[]);
+  useEffect(()=>{ if(posts!==DEFAULT_POSTS) saveToFirestore("journal", posts); },[posts]);
   const addPost=()=>{if(!newPost.title.trim()||!newPost.body.trim())return;const p={id:Date.now(),date:new Date().toISOString().slice(0,7).replace("-","."),tag:newPost.tag||"筆記",title:newPost.title,body:newPost.body};setPosts(prev=>[p,...prev]);setNewPost({tag:"",title:"",body:""});setAdding(false);};
   return (
     <section id="journal" className="reveal" style={{padding:`${py} ${px}`,background:C.bgAlt,borderTop:`1px solid ${C.rule}`}}>
@@ -764,20 +781,33 @@ export default function Portfolio() {
   const [active,setActive]=useState("hero");
   const [editMode,setEditMode]=useState(false);
   const [showPw,setShowPw]=useState(false);
+  const [loading,setLoading]=useState(true);
 
-  // Load content from localStorage or defaults
-  const [content,setContent]=useState(()=>{
-    try{const s=localStorage.getItem(CONTENT_KEY);return s?JSON.parse(s):DEFAULT_CONTENT;}
-    catch{return DEFAULT_CONTENT;}
-  });
+  const [siteContent,setSiteContent]=useState(DEFAULT_CONTENT);
+  const setSection=(section)=>(field,val)=>setSiteContent(prev=>({...prev,[section]:{...prev[section],[field]:val}}));
 
-  const setSection=(section)=>(field,val)=>setContent(prev=>({...prev,[section]:{...prev[section],[field]:val}}));
+  // Load from Firestore on mount
+  useEffect(()=>{
+    loadFromFirestore("content", DEFAULT_CONTENT).then(data=>{
+      setSiteContent(data);
+      setLoading(false);
+    });
+  },[]);
 
-  const saveContent=()=>{try{localStorage.setItem(CONTENT_KEY,JSON.stringify(content));}catch{}};
-  const resetContent=()=>{if(window.confirm("確定還原所有文字到預設內容？")){setContent(DEFAULT_CONTENT);localStorage.removeItem(CONTENT_KEY);}};
+  const saveContent = async () => {
+    await saveToFirestore("content", siteContent);
+    alert("已儲存到雲端！所有裝置都會更新。");
+  };
+
+  const resetContent = async () => {
+    if(window.confirm("確定還原所有文字到預設內容？")){
+      setSiteContent(DEFAULT_CONTENT);
+      await saveToFirestore("content", DEFAULT_CONTENT);
+    }
+  };
 
   useStyles();
-  useReveal();
+  useReveal(loading); // no-op
 
   // Google Analytics
   useEffect(()=>{
@@ -801,16 +831,22 @@ export default function Portfolio() {
     return()=>obs.disconnect();
   },[]);
 
+  if(loading) return (
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <p style={{fontFamily:"'Noto Sans TC',sans-serif",fontSize:"13px",fontWeight:300,letterSpacing:".2em",color:C.inkFaint}}>載入中…</p>
+    </div>
+  );
+
   return (
     <div style={{background:C.bg,minHeight:"100vh",paddingBottom:editMode||showPw?"64px":"0"}}>
       <Nav active={active} setShowPw={setShowPw} editMode={editMode}/>
-      <Hero    c={content.hero}       set={setSection("hero")}       editMode={editMode} resumeEdit={editMode}/>
-      <About   c={content.about}      set={setSection("about")}      editMode={editMode}/>
-      <Experience c={content.experience} set={setSection("experience")} editMode={editMode}/>
-      <Works   c={content.works}      set={setSection("works")}      editMode={editMode}/>
+      <Hero    c={siteContent.hero}       set={setSection("hero")}       editMode={editMode} resumeEdit={editMode}/>
+      <About   c={siteContent.about}      set={setSection("about")}      editMode={editMode}/>
+      <Experience c={siteContent.experience} set={setSection("experience")} editMode={editMode}/>
+      <Works   c={siteContent.works}      set={setSection("works")}      editMode={editMode}/>
       <Videos  editMode={editMode}/>
       <Journal editMode={editMode}/>
-      <Contact c={content.contact}    set={setSection("contact")}    editMode={editMode}/>
+      <Contact c={siteContent.contact}    set={setSection("contact")}    editMode={editMode}/>
       <EditBar editMode={editMode} setEditMode={setEditMode} showPw={showPw} setShowPw={setShowPw} onSave={saveContent} onReset={resetContent}/>
     </div>
   );
