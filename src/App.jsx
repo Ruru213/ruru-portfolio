@@ -158,6 +158,24 @@ const PageNum = ({n,label,mb=32})=>(
 );
 const BrickDot = ()=><span style={{display:"inline-block",width:"5px",height:"5px",background:C.brick,transform:"rotate(45deg)",flexShrink:0,marginTop:"6px"}}/>;
 
+
+// ── GAInput ───────────────────────────────────────────────────────────────────
+function GAInput() {
+  const [val, setVal] = useState("");
+  useEffect(()=>{ try{ setVal(localStorage.getItem(GA_KEY)||""); }catch{} },[]);
+  const save = () => {
+    try{ localStorage.setItem(GA_KEY, val.trim()); alert("GA ID 已儲存，重新整理後生效"); }catch{}
+  };
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}>
+      <span style={{fontFamily:"'Noto Sans TC',sans-serif",fontSize:"10px",fontWeight:300,letterSpacing:".1em",color:"rgba(242,237,230,.4)",whiteSpace:"nowrap"}}>GA ID</span>
+      <input type="text" value={val} onChange={e=>setVal(e.target.value)} placeholder="G-XXXXXXXXXX"
+        style={{width:"140px",height:"30px",background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",color:"#fff",padding:"0 8px",fontSize:"11px",letterSpacing:".06em"}}/>
+      <button className="e-btn" onClick={save} style={{color:"rgba(242,237,230,.5)",borderColor:"rgba(255,255,255,.15)",padding:"4px 10px",fontSize:"10px"}}>套用</button>
+    </div>
+  );
+}
+
 // ── EditBar ───────────────────────────────────────────────────────────
 function EditBar({ editMode, setEditMode, showPw, setShowPw, onSave, onReset }) {
   const [pw, setPw] = useState("");
