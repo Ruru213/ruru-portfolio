@@ -14,17 +14,22 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
-async function loadFromFirestore(key, fallback) {
-  try {
-    const snap = await getDoc(doc(db, "portfolio", key));
-    return snap.exists() ? snap.data().value : fallback;
-  } catch { return fallback; }
-}
+
 
 async function saveToFirestore(key, value) {
   try {
-    await setDoc(doc(db, "portfolio", key), { value });
+    // Firestore doesn't support nested arrays — serialize to JSON string
+    await setDoc(doc(db, "portfolio", key), { value: JSON.stringify(value) });
   } catch(e) { console.warn("Firestore save failed", e); }
+}
+
+async function loadFromFirestore(key, fallback) {
+  try {
+    const snap = await getDoc(doc(db, "portfolio", key));
+    if (!snap.exists()) return fallback;
+    const raw = snap.data().value;
+    return typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch { return fallback; }
 }
 
 // ── Design Tokens ─────────────────────────────────────────────────────
