@@ -763,15 +763,17 @@ export default function Portfolio() {
 
   // Google Analytics
   useEffect(()=>{
-    const gaId = localStorage.getItem(GA_KEY);
-    if(!gaId) return;
-    const s1=document.createElement("script");
-    s1.async=true;
-    s1.src=`https://www.googletagmanager.com/gtag/js?id=${gaId}`;
-    document.head.appendChild(s1);
-    const s2=document.createElement("script");
-    s2.textContent=`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${gaId}');`;
-    document.head.appendChild(s2);
+    try {
+      const gaId = localStorage.getItem(GA_KEY);
+      if(!gaId) return;
+      const s1=document.createElement("script");
+      s1.async=true;
+      s1.src=`https://www.googletagmanager.com/gtag/js?id=${gaId}`;
+      document.head.appendChild(s1);
+      const s2=document.createElement("script");
+      s2.textContent=`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${gaId}');`;
+      document.head.appendChild(s2);
+    } catch(e) { console.warn("GA init failed", e); }
   },[]);
 
   useEffect(()=>{
